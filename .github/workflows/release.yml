@@ -2,7 +2,7 @@ name: Build and release executables
 
 on:
   push:
-    branch: 
+    branches: 
       - main 
   workflow_dispatch:
 
