@@ -1,6 +1,57 @@
-# Codex / ChatGPT Windows ACL Error Repair Tool
+# Codex Repair and Settings
 
-A production-grade, zero-dependency utility to diagnose and repair the `helper_unknown_error: apply deny-read ACLs` error in OpenAI Codex and ChatGPT on Windows.
+A utility to diagnose and repair the `helper_unknown_error: apply deny-read ACLs` error in OpenAI Codex and ChatGPT on Windows, and edit Codex permission and model defaults on Windows, Ubuntu, and macOS.
+
+## Download an executable
+
+Download your platform's archive from [GitHub Releases](https://github.com/7324136828/resolve-acl-deny-error/releases), then extract the whole archive. Python and pip are bundled; you do not need to install them. Keep each executable beside its `_internal` folder.
+
+| Release asset | Platform | GUI launcher | CLI launcher |
+| --- | --- | --- | --- |
+| `codex-repair-windows-x64.zip` | Windows x64 | `codex-repair/codex-repair.exe` | `codex-repair-cli/codex-repair-cli.exe` |
+| `codex-repair-ubuntu-x64.tar.gz` | Ubuntu 22.04+ x64 | `codex-repair/codex-repair` | `codex-repair-cli/codex-repair-cli` |
+| `codex-repair-macos-arm64.tar.gz` | Apple Silicon MacBook/macOS 15+ | `Codex Repair.app` | `codex-repair-cli/codex-repair-cli` |
+| `codex-repair-macos-x64.tar.gz` | Intel MacBook/macOS 15+ | `Codex Repair.app` | `codex-repair-cli/codex-repair-cli` |
+
+The GUI opens when launched without arguments. Ubuntu needs a desktop display. macOS builds use ad-hoc signing and are not notarized; Windows builds are not publisher-signed. Your OS may request confirmation to open a downloaded app. A `.sha256` file accompanies each archive.
+
+## Choose Codex permissions and a default model
+
+Open **Settings** in the GUI, choose a permission level or **Custom settings**, enter a model ID such as `gpt-6.1-sol`, and click **Save settings**. The dialog displays the current values and starts with **Keep current permissions**. Leaving the model blank keeps the existing model.
+
+The editor targets `%USERPROFILE%\.codex\config.toml` on Windows and `~/.codex/config.toml` on Ubuntu/macOS. It honors `CODEX_HOME` and `--codex-home`. It preserves unrelated settings and comments, creates a unique `config.toml.backup-<timestamp>-<id>.bak` before changing an existing file, and uses a staged replacement. Identical settings require no write or backup. It refuses malformed TOML, links/reparse points, oversized files, and detected concurrent changes. POSIX file modes are preserved.
+
+| Permission level | `approval_policy` | `approvals_reviewer` | `sandbox_mode` | Effect |
+| --- | --- | --- | --- | --- |
+| Read only | `on-request` | `user` | `read-only` | Read-only sandbox; Codex can ask to perform actions outside it. |
+| Workspace write | `on-request` | `user` | `workspace-write` | Workspace writes; asks you when approval is required. |
+| Approve for me | `on-request` | `auto_review` | `workspace-write` | Workspace sandbox; eligible approval requests go to automatic review. |
+| Workspace write, no prompts | `never` | `user` | `workspace-write` | Keeps the sandbox; rejects actions that require approval. |
+| Full access, no prompts | `never` | `user` | `danger-full-access` | Removes sandbox restrictions and approval prompts. |
+
+The **Approve for me** preset writes the requested defaults:
+
+```toml
+approval_policy = "on-request"
+approvals_reviewer = "auto_review"
+sandbox_mode = "workspace-write"
+model = "gpt-6.1-sol"
+```
+
+These choices follow the [official OpenAI configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference) and [auto-review documentation](https://learn.chatgpt.com/docs/sandboxing/auto-review). `untrusted` is unsupported and `on-failure` is deprecated, so they are not offered. Existing granular approval policies are preserved during model-only edits. If a config uses `default_permissions`, the editor refuses to add the conflicting `sandbox_mode`; use Codex's permission profile controls for that configuration.
+
+Restart Codex after saving. Project overrides, selected configuration profiles, command-line flags, and managed organization policies may take precedence over user defaults. Use a model available to your account; the editor accepts your model ID without making a network request. See [OpenAI's configuration basics](https://learn.chatgpt.com/docs/config-file/config-basic) for precedence and model availability.
+
+CLI examples (replace `python repair_acl.py` with your packaged CLI launcher if using a release):
+
+```powershell
+python repair_acl.py --config-show --json
+python repair_acl.py --config-set --permission-level approve-for-me --model "gpt-6.1-sol"
+python repair_acl.py --config-set --approval-policy on-request --approvals-reviewer user --sandbox-mode read-only
+python repair_acl.py --config-set --model "my-model-id"
+```
+
+Permission/model options require `--config-set`. Choose either a preset or individual permission fields. Reading defaults never creates a config file; saving creates one if needed. Output contains only the edited permission/model fields.
 
 ---
 
@@ -14,12 +65,12 @@ This tool safely detects corruption in the state file and quarantines it to a ti
 
 ## Key Features & Safety Guarantees
 
-- **Zero Third-Party Dependencies**: Pure Python 3.9+ standard library (`turtle`, `tkinter`, `json`, `pathlib`). No `pip install` required.
+- **Python 3.9+**: ACL repair uses the standard library. The settings editor uses `tomlkit` to preserve TOML formatting and comments. Release downloads bundle dependencies.
 - **Interactive Turtle GUI**: Clean, modern dark-theme graphical interface with visual inspection, dry-run checking, one-click repair, and quick sandbox folder access.
 - **Non-Destructive & Safe by Design**:
   - Never touches or alters valid, parseable JSON files (even with unknown future schemas).
   - Preserves original bytes and Windows file permissions in unique timestamped backups.
-  - Never modifies Windows user privileges, system ACLs, or sandbox security modes.
+  - ACL repair never modifies Windows user privileges, system ACLs, or sandbox security modes. The separate settings editor changes only the defaults you select.
   - Refuses symbolic links, junctions, and reparse points to prevent directory traversal.
   - Detects concurrent modifications between inspection and quarantine.
 - **Automation Ready**: First-class CLI with `--check` (dry run), `--fix`, and `--json` machine-readable output.
@@ -29,6 +80,14 @@ This tool safely detects corruption in the state file and quarantines it to a ti
 ## Quick Start
 
 ### 1. Launch Interactive GUI (Recommended)
+
+When running from source, install the settings dependency first:
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+Source installations also need Tk support (on Ubuntu: `sudo apt install python3-tk`).
 
 Double-click **`run.bat`** in the repository root, or run:
 
@@ -46,8 +105,11 @@ The Turtle GUI allows you to:
 - 🔍 **Check Status**: Inspect your sandbox state without modifying any files.
 - ⚡ **Fix / Repair**: Safely quarantine the corrupt file if corruption is detected.
 - 📂 **Open Folder**: Open the `.sandbox` directory directly in File Explorer.
+- **Settings**: Choose Codex permissions and a model on Windows, Ubuntu, or macOS.
 
 > **Important**: Please close ChatGPT, Codex, and any active Codex sessions in VS Code before executing a fix.
+
+ACL repair is Windows-specific. On Ubuntu/macOS the GUI provides settings editing; `--check` and `--fix` require `--force-platform` to inspect copied Windows state for testing.
 
 ---
 
@@ -130,8 +192,31 @@ elif check.status == StateStatus.HEALTHY:
 The test suite runs against isolated temporary directories and never modifies the live system:
 
 ```powershell
+python -m pip install -r requirements.txt
 python -m unittest discover -s tests -p "test_*.py"
 ```
+
+## Build and publish releases
+
+The [release workflow](.github/workflows/release.yml) tests and builds on native Windows, Ubuntu, Apple Silicon macOS, and Intel macOS runners. Each archive includes a GUI, a CLI, the README, and the license. Packaged CLI smoke tests verify config writes, reads, and ACL repair in temporary directories before upload.
+
+Push a version tag after committing and pushing the changes to publish all four archives and their SHA-256 checksums:
+
+```powershell
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The workflow uses GitHub's built-in `GITHUB_TOKEN`; no release secret is needed. Pull requests also build and test the apps. **Actions → Build and release executables → Run workflow** builds downloadable artifacts without publishing when run on a branch; running it on an existing `v*` tag publishes that tag. Re-running a tag updates its existing release assets.
+
+To build locally on the target OS:
+
+```powershell
+python -m pip install -r requirements-build.txt
+python scripts/build_release.py --target windows-x64
+```
+
+Use `ubuntu-x64`, `macos-arm64`, or `macos-x64` on the matching native OS and CPU. Build tools use Python 3.9+; CI uses Python 3.13. Archives appear under `dist/release/`.
 
 ---
 
@@ -139,14 +224,17 @@ python -m unittest discover -s tests -p "test_*.py"
 
 ```text
 resolve-acl-deny-error/
-├── original-project/          # Original reference implementation & tests
-│   ├── repair_codex_acl.py
-│   ├── test_repair_codex_acl.py
-│   └── run.bat
+├── .github/workflows/release.yml # Native builds and tag-based releases
+├── scripts/build_release.py   # Packaging and executable smoke tests
 ├── tests/                     # Unit test suite
-│   └── test_repair_acl.py
+│   ├── test_repair_acl.py
+│   └── test_codex_config.py
 ├── repair_acl.py              # Core engine, programmatic API, and CLI
 ├── turtle_gui.py              # Interactive Turtle-based GUI
+├── settings_gui.py            # Permission/model settings dialog
+├── codex_config.py            # TOML-preserving settings editor
+├── requirements.txt           # Settings dependency
+├── requirements-build.txt     # Native packaging dependencies
 ├── run.bat                    # Windows launcher (launches GUI or forwards CLI flags)
 ├── run.sh                     # POSIX launcher
 ├── secrets.md                 # Security & credential audit trail
