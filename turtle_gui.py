@@ -1,8 +1,7 @@
 """Interactive Turtle-based GUI for repairing Codex deny-read ACL state corruption.
 
-Built entirely with Python's standard library (turtle / tkinter) - zero dependencies.
 Provides visual status inspection, dry-run checking, one-click repair,
-and quick access to the Codex sandbox folder.
+quick access to the Codex sandbox folder, and a TOML settings editor.
 """
 
 from __future__ import annotations
@@ -12,7 +11,6 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-import time
 import turtle
 from typing import Optional
 
@@ -41,10 +39,11 @@ BUTTON_HOVER = "#585b70"
 
 # Button Definitions: (name, x, y, width, height, text, bg_color, text_color, action_id)
 BUTTONS = [
-    {"id": "check", "x": -250, "y": -40, "w": 150, "h": 40, "text": "🔍 Check Status", "bg": "#313244", "fg": "#89b4fa"},
-    {"id": "fix", "x": -80, "y": -40, "w": 160, "h": 40, "text": "⚡ Fix / Repair", "bg": "#a6e3a1", "fg": "#11111b"},
-    {"id": "open", "x": 100, "y": -40, "w": 150, "h": 40, "text": "📂 Open Folder", "bg": "#313244", "fg": "#cdd6f4"},
-    {"id": "exit", "x": 270, "y": -40, "w": 80, "h": 40, "text": "Exit", "bg": "#45475a", "fg": "#f38ba8"},
+    {"id": "check", "x": -340, "y": -40, "w": 130, "h": 40, "text": "Check Status", "bg": "#313244", "fg": "#89b4fa"},
+    {"id": "fix", "x": -200, "y": -40, "w": 130, "h": 40, "text": "Fix / Repair", "bg": "#a6e3a1", "fg": "#11111b"},
+    {"id": "settings", "x": -60, "y": -40, "w": 130, "h": 40, "text": "Settings", "bg": "#313244", "fg": "#89b4fa"},
+    {"id": "open", "x": 80, "y": -40, "w": 130, "h": 40, "text": "Open Folder", "bg": "#313244", "fg": "#cdd6f4"},
+    {"id": "exit", "x": 220, "y": -40, "w": 120, "h": 40, "text": "Exit", "bg": "#45475a", "fg": "#f38ba8"},
 ]
 
 
@@ -68,7 +67,7 @@ class CodexRepairUI:
         # Setup Turtle Screen
         turtle.setup(width=760, height=620)
         self.screen = turtle.Screen()
-        self.screen.title("Codex ACL Error Repair Utility")
+        self.screen.title("Codex Repair and Settings")
         self.screen.bgcolor(BG_COLOR)
         self.screen.tracer(0)
 
@@ -126,10 +125,10 @@ class CodexRepairUI:
 
         # 1. Header Card
         self.draw_rect(-360, 230, 720, 65, CARD_BG, border="#45475a")
-        self.draw_text(-340, 268, "🛡️ Codex ACL Deny Error Repair Tool", TEXT_PRIMARY, font_size=15, bold=True)
+        self.draw_text(-340, 268, "Codex Repair and Settings", TEXT_PRIMARY, font_size=15, bold=True)
         self.draw_text(
             -340, 245,
-            "Fixes 'helper_unknown_error: apply deny-read ACLs' by safely quarantining corrupt JSON",
+            "Repair Windows ACL state and choose your Codex permissions and default model",
             TEXT_MUTED, font_size=10
         )
 
@@ -170,12 +169,19 @@ class CodexRepairUI:
             log_y -= 22
 
         # 6. Footer Note
-        self.draw_text(0, -280, "Close ChatGPT/Codex before repairing. No Windows permissions are altered.",
+        self.draw_text(0, -280, "Close Codex before repair or saving settings. ACL repair does not change permissions.",
                        TEXT_MUTED, font_size=9, align="center")
 
         self.screen.update()
 
     def perform_check(self, log_start: bool = True) -> None:
+        if os.name != "nt":
+            self.status_title = "Codex Settings"
+            self.status_detail = "Use Settings to choose permissions and model. ACL repair is Windows-only."
+            self.status_color = ACCENT_BLUE
+            self.status_fg = "#11111b"
+            self.render()
+            return
         if log_start:
             self.add_log("Checking state file...")
         try:
@@ -218,6 +224,10 @@ class CodexRepairUI:
         self.render()
 
     def perform_repair(self) -> None:
+        if os.name != "nt":
+            self.add_log("ACL repair applies to Windows only. Use Settings on this platform.")
+            self.render()
+            return
         self.add_log("Initiating repair process...")
         self.render()
 
@@ -255,6 +265,15 @@ class CodexRepairUI:
 
         self.render()
 
+    def open_settings(self) -> None:
+        from settings_gui import SettingsDialog
+
+        def saved(message: str) -> None:
+            self.add_log(message.splitlines()[0])
+            self.render()
+
+        SettingsDialog(self.screen.getcanvas().winfo_toplevel(), self.codex_home, saved)
+
     def open_sandbox_folder(self) -> None:
         target_dir = self.sandbox if self.sandbox.exists() else self.home
         self.add_log(f"Opening folder: {target_dir}")
@@ -277,6 +296,8 @@ class CodexRepairUI:
                     self.perform_check()
                 elif action_id == "fix":
                     self.perform_repair()
+                elif action_id == "settings":
+                    self.open_settings()
                 elif action_id == "open":
                     self.open_sandbox_folder()
                 elif action_id == "exit":

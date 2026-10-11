@@ -1,0 +1,2 @@
+# Used only by the settings editor; ACL repair itself uses the standard library.
+tomlkit==0.15.1

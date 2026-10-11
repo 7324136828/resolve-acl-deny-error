@@ -14,7 +14,7 @@ Safe by design:
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 import json
@@ -306,8 +306,13 @@ def launch_gui(codex_home: Optional[Path] = None) -> int:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    from codex_config import (
+        APPROVAL_POLICIES, APPROVAL_REVIEWERS, SANDBOX_MODES, PERMISSION_LEVELS,
+        ConfigError, read_codex_config, update_codex_config,
+    )
+
     parser = argparse.ArgumentParser(
-        description="Diagnose and repair corrupt Codex deny-read ACL state files."
+        description="Repair Windows Codex ACL state and edit Codex permission/model defaults."
     )
     parser.add_argument(
         "--codex-home",
@@ -333,6 +338,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         action="store_true",
         help="Launch the interactive Turtle graphical user interface",
     )
+    group.add_argument("--config-show", action="store_true", help="Read permission/model defaults on any OS")
+    group.add_argument("--config-set", action="store_true", help="Save selected defaults with a backup on any OS")
+    parser.add_argument("--permission-level", choices=PERMISSION_LEVELS, help="Permission preset for --config-set")
+    parser.add_argument("--approval-policy", choices=APPROVAL_POLICIES, help="Approval policy for --config-set")
+    parser.add_argument("--approvals-reviewer", choices=APPROVAL_REVIEWERS, help="Reviewer for --config-set")
+    parser.add_argument("--sandbox-mode", choices=SANDBOX_MODES, help="Sandbox mode for --config-set")
+    parser.add_argument("--model", help="Your default model ID for --config-set (for example gpt-6.1-sol)")
     parser.add_argument(
         "--json",
         action="store_true",
@@ -355,7 +367,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         help="Enable verbose debug logging",
     )
 
-    args = parser.parse_args(argv)
+    actual_argv = list(sys.argv[1:] if argv is None else argv)
+    args = parser.parse_args(actual_argv)
+    if not args.config_set and any(value is not None for value in (
+        args.permission_level, args.approval_policy, args.approvals_reviewer, args.sandbox_mode, args.model,
+    )):
+        parser.error("Permission and model options require --config-set")
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
@@ -363,20 +380,35 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
 
     try:
+        if args.config_show or args.config_set:
+            if args.config_show:
+                config = read_codex_config(args.codex_home)
+            else:
+                config = update_codex_config(
+                    args.codex_home, permission_level=args.permission_level,
+                    approval_policy=args.approval_policy, approvals_reviewer=args.approvals_reviewer,
+                    sandbox_mode=args.sandbox_mode, model=args.model,
+                )
+            if args.json_output:
+                print(json.dumps(config.to_dict(), indent=2))
+            else:
+                print(f"Config: {config.config_file}")
+                for key, value in config.settings.items():
+                    print(f"{key} = {json.dumps(value)}")
+                if args.config_set:
+                    print("Saved. Restart Codex to load these defaults." if config.changed else "Settings already match.")
+                if config.backup_file:
+                    print(f"Backup: {config.backup_file}")
+            return 0
+
+        # Settings and the GUI are available everywhere; ACL repair is a Windows operation.
+        if args.gui or not actual_argv:
+            return launch_gui(args.codex_home)
+
         if os.name != "nt" and not args.force_platform:
             raise RepairError(
                 "This utility is intended for Windows Codex sandboxes. Use --force-platform to override."
             )
-
-        # If --gui requested, launch Turtle GUI
-        if args.gui:
-            return launch_gui(args.codex_home)
-
-        # If run with no explicit mode and stdin is a TTY and no args were given, default to GUI if available
-        if (argv is None or len(argv) == 0) and not (args.check_only or args.fix or args.json_output):
-            if sys.stdin and sys.stdin.isatty():
-                print("No mode specified. Launching Turtle GUI...")
-                return launch_gui(args.codex_home)
 
         # CLI execution
         if args.check_only:
@@ -409,7 +441,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         else:
             print(f"\n[ERROR] {msg}", file=sys.stderr)
         return 1
-    except (RepairError, OSError) as error:
+    except (ConfigError, RepairError, OSError) as error:
         logger.error("Stopped: %s", error)
         if args.json_output:
             print(json.dumps({"success": False, "error": str(error)}))

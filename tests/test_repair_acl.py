@@ -179,8 +179,7 @@ class RepairAclTests(unittest.TestCase):
 
     def test_cli_json_check(self):
         self.state_file.write_bytes(b"\x00" * 22)
-        with mock.patch.object(repair_acl.os, "name", "nt"):
-            ret = repair_acl.main(["--codex-home", str(self.home), "--check", "--json"])
+        ret = repair_acl.main(["--codex-home", str(self.home), "--check", "--json", "--force-platform"])
         self.assertEqual(ret, 2)
         out = json.loads(self.stdout.getvalue())
         self.assertEqual(out["status"], "corrupt")
@@ -188,8 +187,7 @@ class RepairAclTests(unittest.TestCase):
 
     def test_cli_fix(self):
         self.state_file.write_bytes(b"\x00" * 22)
-        with mock.patch.object(repair_acl.os, "name", "nt"):
-            ret = repair_acl.main(["--codex-home", str(self.home), "--fix", "--json"])
+        ret = repair_acl.main(["--codex-home", str(self.home), "--fix", "--json", "--force-platform"])
         self.assertEqual(ret, 0)
         out = json.loads(self.stdout.getvalue())
         self.assertTrue(out["success"])
@@ -201,8 +199,7 @@ class RepairAclTests(unittest.TestCase):
         self.state_file.write_bytes(b"\x00" * 22)
         denied = PermissionError(errno.EACCES, "denied", str(self.state_file))
         with mock.patch.object(repair_acl, "read_snapshot", side_effect=denied):
-            with mock.patch.object(repair_acl.os, "name", "nt"):
-                ret = repair_acl.main(["--codex-home", str(self.home), "--fix"])
+            ret = repair_acl.main(["--codex-home", str(self.home), "--fix", "--force-platform"])
         self.assertEqual(ret, 1)
         self.assertIn("Access denied", self.stderr.getvalue())
 
