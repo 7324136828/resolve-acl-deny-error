@@ -22,7 +22,8 @@ class RepairAclTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory(prefix="test-codex-acl-")
         self.addCleanup(self.temp_dir.cleanup)
-        self.home = Path(self.temp_dir.name) / "codex_home"
+        # Match the repair API's resolved paths (macOS /var aliases /private/var).
+        self.home = Path(self.temp_dir.name).resolve() / "codex_home"
         self.home.mkdir()
         self.sandbox = self.home / ".sandbox"
         self.sandbox.mkdir()
